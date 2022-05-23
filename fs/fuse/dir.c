@@ -620,7 +620,7 @@ out_err:
 	return err;
 }
 
-static void *extend_arg(struct fuse_in_arg *buf, u32 bytes)
+void *extend_arg(struct fuse_in_arg *buf, u32 bytes)
 {
 	void *p;
 	u32 newlen = buf->size + bytes;
@@ -640,7 +640,7 @@ static void *extend_arg(struct fuse_in_arg *buf, u32 bytes)
 	return p + newlen - bytes;
 }
 
-static u32 fuse_ext_size(size_t size)
+u32 fuse_ext_size(size_t size)
 {
 	return FUSE_REC_ALIGN(sizeof(struct fuse_ext_header) + size);
 }
@@ -700,7 +700,7 @@ static int get_create_ext(struct fuse_args *args,
 	return err;
 }
 
-static void free_ext_value(struct fuse_args *args)
+void free_ext_value(struct fuse_args *args)
 {
 	if (args->is_ext)
 		kfree(args->in_args[args->ext_idx].value);

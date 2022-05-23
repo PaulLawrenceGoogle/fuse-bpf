@@ -14,6 +14,163 @@
 #include <linux/namei.h>
 #include <linux/uio.h>
 
+static void set_in_args(struct fuse_in_arg *dst, struct bpf_fuse_arg *src)
+{
+	if (src->is_buffer) {
+		struct fuse_buffer *buffer = src->buffer;
+
+		*dst = (struct fuse_in_arg) {
+			.size = buffer->size,
+			.value = buffer->data,
+		};
+	} else {
+		*dst = (struct fuse_in_arg) {
+			.size = src->size,
+			.value = src->value,
+		};
+	}
+}
+
+static void set_out_args(struct fuse_arg *dst, struct bpf_fuse_arg *src)
+{
+	if (src->is_buffer) {
+		struct fuse_buffer *buffer = src->buffer;
+
+		// Userspace out args presents as much space as needed
+		*dst = (struct fuse_arg) {
+			.size = buffer->max_size,
+			.value = buffer->data,
+		};
+	} else {
+		*dst = (struct fuse_arg) {
+			.size = src->size,
+			.value = src->value,
+		};
+	}
+}
+
+static int get_err_in(uint32_t error, struct fuse_in_arg *ext)
+{
+	struct fuse_ext_header *xh;
+	uint32_t *err_in;
+	uint32_t err_in_size = fuse_ext_size(sizeof(*err_in));
+
+	xh = extend_arg(ext, err_in_size);
+	if (!xh)
+		return -ENOMEM;
+	xh->size = err_in_size;
+	xh->type = FUSE_ERROR_IN;
+
+	err_in = (uint32_t *)&xh[1];
+	*err_in = error;
+	return 0;
+}
+
+static int get_filter_ext(struct fuse_args *args)
+{
+	struct fuse_in_arg ext = { .size  = 0, .value = NULL };
+	int err = 0;
+
+	if (args->is_filter)
+		err = get_err_in(args->error_in, &ext);
+	if (!err && ext.size) {
+		WARN_ON(args->in_numargs >= ARRAY_SIZE(args->in_args));
+		args->is_ext = true;
+		args->ext_idx = args->in_numargs++;
+		args->in_args[args->ext_idx] = ext;
+	} else {
+		kfree(ext.value);
+	}
+	return err;
+}
+
+static ssize_t fuse_bpf_simple_request(struct fuse_mount *fm, struct bpf_fuse_args *fa,
+				       unsigned short in_numargs, unsigned short out_numargs,
+				       struct bpf_fuse_arg *out_arg_array, bool add_out_to_in)
+{
+	int i;
+	ssize_t res;
+
+	struct fuse_args args = {
+		.nodeid = fa->info.nodeid,
+		.opcode = fa->info.opcode,
+		.error_in = fa->info.error_in,
+		.in_numargs = in_numargs,
+		.out_numargs = out_numargs,
+		.force = !!(fa->flags & FUSE_BPF_FORCE),
+		.out_argvar = !!(fa->flags & FUSE_BPF_OUT_ARGVAR),
+		.is_lookup = !!(fa->flags & FUSE_BPF_IS_LOOKUP),
+		.is_filter = true,
+	};
+
+	/* All out args must be writeable */
+	for (i = 0; i < out_numargs; ++i) {
+		struct fuse_buffer *buffer;
+
+		if (!out_arg_array[i].is_buffer)
+			continue;
+		buffer = out_arg_array[i].buffer;
+		if (!bpf_fuse_get_writeable(buffer, buffer->max_size, true))
+			return -ENOMEM;
+	}
+
+	/* Set in args */
+	for (i = 0; i < fa->in_numargs; ++i)
+		set_in_args(&args.in_args[i], &fa->in_args[i]);
+	if (add_out_to_in) {
+		for (i = 0; i < fa->out_numargs; ++i) {
+			set_in_args(&args.in_args[fa->in_numargs + i], &fa->out_args[i]);
+		}
+	}
+
+	/* Set out args */
+	for (i = 0; i < out_numargs; ++i)
+		set_out_args(&args.out_args[i], &out_arg_array[i]);
+
+	if (out_arg_array[out_numargs - 1].is_buffer) {
+		struct fuse_buffer *buff = out_arg_array[out_numargs - 1].buffer;
+
+		if (buff->flags & BPF_FUSE_VARIABLE_SIZE)
+			args.out_argvar = true;
+	}
+	if (add_out_to_in) {
+		res = get_filter_ext(&args);
+		if (res)
+			return res;
+	}
+	res = fuse_simple_request(fm, &args);
+
+	/* update used areas of buffers */
+	for (i = 0; i < out_numargs; ++i)
+		if (out_arg_array[i].is_buffer &&
+				(out_arg_array[i].buffer->flags & BPF_FUSE_VARIABLE_SIZE))
+			out_arg_array[i].buffer->size = args.out_args[i].size;
+	fa->ret = args.ret;
+
+	free_ext_value(&args);
+
+	return res;
+}
+
+static ssize_t fuse_prefilter_simple_request(struct fuse_mount *fm, struct bpf_fuse_args *fa)
+{
+	uint32_t out_args = fa->in_numargs;
+
+	// mkdir and company are not permitted to change the name. This should be done at lookup
+	// Thus, these can't be set by the userspace prefilter
+	if (fa->in_args[fa->in_numargs - 1].is_buffer &&
+			(fa->in_args[fa->in_numargs - 1].buffer->flags & BPF_FUSE_IMMUTABLE))
+		out_args--;
+	return fuse_bpf_simple_request(fm, fa, fa->in_numargs, out_args,
+				       fa->in_args, false);
+}
+
+static ssize_t fuse_postfilter_simple_request(struct fuse_mount *fm, struct bpf_fuse_args *fa)
+{
+	return fuse_bpf_simple_request(fm, fa, fa->in_numargs + fa->out_numargs, fa->out_numargs,
+				       fa->out_args, true);
+}
+
 static inline void bpf_fuse_set_in_immutable(struct bpf_fuse_args *fa)
 {
 	int i;
@@ -60,9 +217,11 @@ static inline void bpf_fuse_free_alloced(struct bpf_fuse_args *fa)
 ({									\
 	struct fuse_inode *fuse_inode = get_fuse_inode(inode);		\
 	struct fuse_ops *fuse_ops = fuse_inode->bpf_ops;		\
+	struct fuse_mount *fm = get_fuse_mount(inode);			\
 	struct bpf_fuse_args fa = { 0 };				\
 	bool initialized = false;					\
 	bool handled = false;						\
+	bool locked;							\
 	ssize_t res;							\
 	int bpf_next;							\
 	io feo = { 0 };							\
@@ -88,6 +247,16 @@ static inline void bpf_fuse_free_alloced(struct bpf_fuse_args *fa)
 			break;						\
 		}							\
 									\
+		if (bpf_next == BPF_FUSE_USER_PREFILTER) {		\
+			locked = fuse_lock_inode(inode);		\
+			res = fuse_prefilter_simple_request(fm, &fa);	\
+			fuse_unlock_inode(inode, locked);		\
+			if (res < 0) {					\
+				error = res;				\
+				break;					\
+			}						\
+			bpf_next = fa.ret;				\
+		}							\
 		bpf_fuse_set_in_immutable(&fa);				\
 									\
 		error = initialize_out(&fa, &feo, args);		\
@@ -117,6 +286,16 @@ static inline void bpf_fuse_free_alloced(struct bpf_fuse_args *fa)
 			break;						\
 		}							\
 									\
+		if (!(bpf_next == BPF_FUSE_USER_POSTFILTER))		\
+			break;						\
+									\
+		locked = fuse_lock_inode(inode);			\
+		res = fuse_postfilter_simple_request(fm, &fa);		\
+		fuse_unlock_inode(inode, locked);			\
+		if (res < 0) {						\
+			error = res;					\
+			break;						\
+		}							\
 	} while (false);						\
 									\
 	if (initialized && handled) {					\
