@@ -1013,6 +1013,10 @@ static int fuse_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	struct fuse_mount *fm = get_fuse_mount(dir);
 	unsigned len = strlen(link) + 1;
 	FUSE_ARGS(args);
+	int err;
+
+	if (fuse_bpf_symlink(&err, dir, entry, link, len))
+		return err;
 
 	args.opcode = FUSE_SYMLINK;
 	args.in_numargs = 2;
@@ -1218,6 +1222,9 @@ static int fuse_link(struct dentry *entry, struct inode *newdir,
 	struct inode *inode = d_inode(entry);
 	struct fuse_mount *fm = get_fuse_mount(inode);
 	FUSE_ARGS(args);
+
+	if (fuse_bpf_link(&err, inode, entry, newdir, newent))
+		return err;
 
 	memset(&inarg, 0, sizeof(inarg));
 	inarg.oldnodeid = get_node_id(inode);
@@ -1618,11 +1625,15 @@ static const char *fuse_get_link(struct dentry *dentry, struct inode *inode,
 {
 	struct fuse_conn *fc = get_fuse_conn(inode);
 	struct page *page;
+	const char *out = NULL;
 	int err;
 
 	err = -EIO;
 	if (fuse_is_bad(inode))
 		goto out_err;
+
+	if (fuse_bpf_get_link(&out, inode, dentry, callback))
+		return out;
 
 	if (fc->cache_symlinks)
 		return page_get_link(dentry, inode, callback);
