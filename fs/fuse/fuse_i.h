@@ -33,6 +33,7 @@
 #include <linux/pid_namespace.h>
 #include <linux/refcount.h>
 #include <linux/user_namespace.h>
+#include <linux/bpf_fuse.h>
 #include <linux/magic.h>
 
 /** Default max number of pages that can be used in a single read request */
@@ -109,6 +110,12 @@ struct fuse_inode {
 	 * If this is set, nodeid is 0.
 	 */
 	struct inode *backing_inode;
+
+	/**
+	 * fuse_ops, provides handlers to run on all operations to determine
+	 * whether to pass through or handle in place
+	 */
+	struct fuse_ops *bpf_ops;
 #endif
 
 	/** Unique ID, which identifies the inode between userspace
@@ -571,6 +578,7 @@ struct fuse_fs_context {
 	unsigned int max_read;
 	unsigned int blksize;
 	const char *subtype;
+	struct fuse_ops *root_ops;
 	struct file *root_dir;
 
 	/* DAX device, may be NULL */
@@ -1428,6 +1436,8 @@ struct fuse_bpf_entry {
 
 	enum fuse_bpf_set backing_action;
 	struct path backing_path;
+	enum fuse_bpf_set bpf_action;
+	struct fuse_ops *ops;
 	bool is_used;
 };
 
@@ -1651,6 +1661,8 @@ static inline int fuse_bpf_access(int *out, struct inode *inode, int mask)
 ssize_t fuse_backing_mmap(struct file *file, struct vm_area_struct *vma);
 
 int fuse_handle_backing(struct fuse_bpf_entry *fbe, struct path *backing_path);
+int fuse_handle_bpf_ops(struct fuse_bpf_entry *fbe, struct inode *parent,
+			 struct fuse_ops **ops);
 
 int fuse_revalidate_backing(struct dentry *entry, unsigned int flags);
 

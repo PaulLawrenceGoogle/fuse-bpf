@@ -80,6 +80,7 @@ static struct inode *fuse_alloc_inode(struct super_block *sb)
 	fi->inval_mask = 0;
 #ifdef CONFIG_FUSE_BPF
 	fi->backing_inode = NULL;
+	fi->bpf_ops = NULL;
 #endif
 	fi->nodeid = 0;
 	fi->nlookup = 0;
@@ -125,6 +126,9 @@ static void fuse_evict_inode(struct inode *inode)
 
 #ifdef CONFIG_FUSE_BPF
 	iput(fi->backing_inode);
+	if (fi->bpf_ops)
+		put_fuse_ops(fi->bpf_ops);
+	fi->bpf_ops = NULL;
 #endif
 
 	truncate_inode_pages_final(&inode->i_data);
@@ -755,6 +759,7 @@ enum {
 	OPT_ALLOW_OTHER,
 	OPT_MAX_READ,
 	OPT_BLKSIZE,
+	OPT_ROOT_BPF,
 	OPT_ROOT_DIR,
 	OPT_NO_DAEMON,
 	OPT_ERR
@@ -771,6 +776,7 @@ static const struct fs_parameter_spec fuse_fs_parameters[] = {
 	fsparam_u32	("max_read",		OPT_MAX_READ),
 	fsparam_u32	("blksize",		OPT_BLKSIZE),
 	fsparam_string	("subtype",		OPT_SUBTYPE),
+	fsparam_string	("root_bpf",		OPT_ROOT_BPF),
 	fsparam_u32	("root_dir",		OPT_ROOT_DIR),
 	fsparam_flag	("no_daemon",		OPT_NO_DAEMON),
 	{}
@@ -856,6 +862,18 @@ static int fuse_parse_param(struct fs_context *fsc, struct fs_parameter *param)
 		ctx->blksize = result.uint_32;
 		break;
 
+	case OPT_ROOT_BPF:
+		if (strnlen(param->string, BPF_FUSE_NAME_MAX + 1) > BPF_FUSE_NAME_MAX) {
+			return invalfc(fsc, "root_bpf name too long. Max length is %d", BPF_FUSE_NAME_MAX);
+		}
+
+		ctx->root_ops = find_fuse_ops(param->string);
+		if (IS_ERR_OR_NULL(ctx->root_ops)) {
+			ctx->root_ops = NULL;
+			return invalfc(fsc, "Unable to find bpf program");
+		}
+		break;
+
 	case OPT_ROOT_DIR:
 		ctx->root_dir = fget(result.uint_32);
 		if (!ctx->root_dir)
@@ -881,6 +899,8 @@ static void fuse_free_fsc(struct fs_context *fsc)
 	if (ctx) {
 		if (ctx->root_dir)
 			fput(ctx->root_dir);
+		if (ctx->root_ops)
+			put_fuse_ops(ctx->root_ops);
 		kfree(ctx->subtype);
 		kfree(ctx);
 	}
@@ -1010,6 +1030,7 @@ EXPORT_SYMBOL_GPL(fuse_conn_get);
 
 static struct inode *fuse_get_root_inode(struct super_block *sb,
 					 unsigned int mode,
+					 struct fuse_ops *root_bpf_ops,
 					 struct file *backing_fd)
 {
 	struct fuse_attr attr;
@@ -1024,6 +1045,10 @@ static struct inode *fuse_get_root_inode(struct super_block *sb,
 		return NULL;
 
 #ifdef CONFIG_FUSE_BPF
+	get_fuse_inode(inode)->bpf_ops = root_bpf_ops;
+	if (root_bpf_ops)
+		get_fuse_ops(root_bpf_ops);
+
 	if (backing_fd) {
 		get_fuse_inode(inode)->backing_inode = backing_fd->f_inode;
 		ihold(backing_fd->f_inode);
@@ -1704,7 +1729,8 @@ int fuse_fill_super_common(struct super_block *sb, struct fuse_fs_context *ctx)
 	fc->no_daemon = ctx->no_daemon;
 
 	err = -ENOMEM;
-	root = fuse_get_root_inode(sb, ctx->rootmode, ctx->root_dir);
+	root = fuse_get_root_inode(sb, ctx->rootmode, ctx->root_ops,
+				   ctx->root_dir);
 	sb->s_d_op = &fuse_root_dentry_operations;
 	root_dentry = d_make_root(root);
 	if (!root_dentry)

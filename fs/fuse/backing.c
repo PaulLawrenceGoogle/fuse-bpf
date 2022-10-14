@@ -6,6 +6,7 @@
 
 #include "fuse_i.h"
 
+#include <linux/bpf.h>
 #include <linux/bpf_fuse.h>
 #include <linux/fdtable.h>
 #include <linux/file.h>
@@ -168,12 +169,13 @@ static void fuse_get_backing_path(struct file *file, struct path *path)
 
 static bool has_file(int type)
 {
-	return type == FUSE_ENTRY_BACKING;
+	return (type == FUSE_ENTRY_BACKING);
 }
 
 /*
- * The optional fuse bpf entry lists the backing file for a particular
- * lookup. These are inherited by default.
+ * The optional fuse bpf entry lists the bpf and backing files for a particular
+ * lookup. These are inherited by default. A Bpf requires a backing file to be
+ * meaningful.
  *
  * In the future, we may support multiple bpfs, and multiple backing files for
  * the bpf to choose between.
@@ -182,14 +184,14 @@ static bool has_file(int type)
  * file. Changing only the bpf is valid, though meaningless if there isn't an
  * inherited backing file.
  *
- * Support for the bpf program will be added in a later patch
- *
  */
 int parse_fuse_bpf_entry(struct fuse_bpf_entry *fbe, int num)
 {
 	struct fuse_bpf_entry_out *fbeo;
+	struct fuse_ops *ops;
 	struct file *file;
 	bool has_backing = false;
+	bool has_bpf_ops = false;
 	int num_entries;
 	int err = -EINVAL;
 	int i;
@@ -227,6 +229,11 @@ int parse_fuse_bpf_entry(struct fuse_bpf_entry *fbe, int num)
 				goto out_err;
 			fbe->backing_action = FUSE_BPF_REMOVE;
 			break;
+		case FUSE_ENTRY_REMOVE_BPF:
+			if (fbe->bpf_action || i == 2)
+				goto out_err;
+			fbe->bpf_action = FUSE_BPF_REMOVE;
+			break;
 		case FUSE_ENTRY_BACKING:
 			if (fbe->backing_action)
 				goto out_err;
@@ -234,8 +241,17 @@ int parse_fuse_bpf_entry(struct fuse_bpf_entry *fbe, int num)
 			fbe->backing_action = FUSE_BPF_SET;
 			has_backing = true;
 			break;
+		case FUSE_ENTRY_BPF:
+			if (fbe->bpf_action || i == 2)
+				goto out_err;
+			ops = find_fuse_ops(fbeo->name);
+			if (!ops)
+				goto out_err;
+			has_bpf_ops = true;
+			fbe->bpf_action = FUSE_BPF_SET;
+			fbe->ops = ops;
+			break;
 		default:
-			err = -EINVAL;
 			goto out_err;
 		}
 		if (has_file(fbeo->entry_type)) {
@@ -252,6 +268,10 @@ out_err:
 		fput(file);
 	if (has_backing)
 		path_put_init(&fbe->backing_path);
+	if (has_bpf_ops) {
+		put_fuse_ops(fbe->ops);
+		fbe->ops = NULL;
+	}
 	return err;
 }
 
@@ -526,6 +546,15 @@ static int fuse_create_open_backing(struct bpf_fuse_args *fa, int *out,
 		*out = PTR_ERR(inode);
 		goto out;
 	}
+
+	if (get_fuse_inode(inode)->bpf_ops)
+		put_fuse_ops(get_fuse_inode(inode)->bpf_ops);
+	get_fuse_inode(inode)->bpf_ops = dir_fuse_inode->bpf_ops;
+	if (get_fuse_inode(inode)->bpf_ops)
+		if (!get_fuse_ops(get_fuse_inode(inode)->bpf_ops)) {
+			*out = -EINVAL;
+			goto out;
+		}
 
 	newent = d_splice_alias(inode, entry);
 	if (IS_ERR(newent)) {
@@ -1842,6 +1871,52 @@ int fuse_handle_backing(struct fuse_bpf_entry *fbe, struct path *backing_path)
 	return 0;
 }
 
+int fuse_handle_bpf_ops(struct fuse_bpf_entry *fbe, struct inode *parent,
+			 struct fuse_ops **ops)
+{
+	struct fuse_ops *new_ops;
+
+	/* Parent isn't presented, but we want to keep
+	 * Don't touch bpf program at all in this case
+	 */
+	if (fbe->bpf_action == FUSE_BPF_UNCHANGED && !parent)
+		return 0;
+
+	switch (fbe->bpf_action) {
+	case FUSE_BPF_UNCHANGED: {
+		struct fuse_inode *pi = get_fuse_inode(parent);
+
+		new_ops = pi->bpf_ops;
+		if (new_ops && !get_fuse_ops(new_ops))
+			return -EINVAL;
+		break;
+	}
+
+	case FUSE_BPF_REMOVE:
+		new_ops = NULL;
+		break;
+
+	case FUSE_BPF_SET:
+		new_ops = fbe->ops;
+
+		if (!new_ops)
+			return -EINVAL;
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	/* Cannot change existing program */
+	if (*ops) {
+		put_fuse_ops(new_ops);
+		return new_ops == *ops ? 0 : -EINVAL;
+	}
+
+	*ops = new_ops;
+	return 0;
+}
+
 static int fuse_lookup_finalize(struct bpf_fuse_args *fa, struct dentry **out,
 				struct inode *dir, struct dentry *entry, unsigned int flags)
 {
@@ -1878,6 +1953,10 @@ static int fuse_lookup_finalize(struct bpf_fuse_args *fa, struct dentry **out,
 
 	if (IS_ERR(inode))
 		return PTR_ERR(inode);
+
+	error = fuse_handle_bpf_ops(fbe, dir, &get_fuse_inode(inode)->bpf_ops);
+	if (error)
+		return error;
 
 	get_fuse_inode(inode)->nodeid = feo->nodeid;
 
