@@ -518,18 +518,6 @@ static int fuse_do_flush(struct fuse_flush_args *fa)
 	struct inode *inode = file_inode(fa->file);
 	struct fuse_mount *fm = get_fuse_mount(inode);
 
-#ifdef CONFIG_FUSE_BPF
-	struct fuse_err_ret fer;
-        struct file *file = fa->file;
-
-	fer = fuse_bpf_backing(inode, struct fuse_flush_in,
-			       fuse_flush_initialize, fuse_flush_backing,
-			       fuse_flush_finalize,
-			       file, inode);
-	if (fer.ret)
-		return PTR_ERR(fer.result);
-#endif
-
 	err = write_inode_now(inode, 1);
 	if (err)
 		goto out;
@@ -585,6 +573,19 @@ static int fuse_flush(struct file *file, fl_owner_t id)
 
 	if (ff->open_flags & FOPEN_NOFLUSH && !fm->fc->writeback_cache)
 		return 0;
+
+#ifdef CONFIG_FUSE_BPF
+	{
+		struct fuse_err_ret fer;
+
+		fer = fuse_bpf_backing(inode, struct fuse_flush_in,
+				       fuse_flush_initialize, fuse_flush_backing,
+				       fuse_flush_finalize,
+				       file, inode);
+		if (fer.ret)
+			return PTR_ERR(fer.result);
+	}
+#endif
 
 	fa = kzalloc(sizeof(*fa), GFP_KERNEL);
 	if (!fa)
