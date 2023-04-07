@@ -126,8 +126,9 @@ static inline int _test_operator_##name(const char *func, int line,	\
 }
 
 _TEST_OPERATOR(i, int, "%d")
-_TEST_OPERATOR(ui, unsigned int, "%u")
-_TEST_OPERATOR(lui, unsigned long, "%lu")
+_TEST_OPERATOR(hu, unsigned int, "%u")
+_TEST_OPERATOR(u, unsigned int, "%u")
+_TEST_OPERATOR(lu, unsigned long, "%lu")
 _TEST_OPERATOR(ss, ssize_t, "%zd")
 _TEST_OPERATOR(vp, void *, "%px")
 _TEST_OPERATOR(cp, char *, "%px")
@@ -141,8 +142,9 @@ _TEST_OPERATOR(cp, char *, "%px")
 	do {								\
 		if (_Generic((a),					\
 			int : _CALL_TO(int, i, a, b, o),		\
-			unsigned int : _CALL_TO(unsigned int, ui, a, b, o),	\
-			unsigned long : _CALL_TO(unsigned long, lui, a, b, o),	\
+			short unsigned int : _CALL_TO(short unsigned int, hu, a, b, o),	\
+			unsigned int : _CALL_TO(unsigned int, u, a, b, o),	\
+			unsigned long : _CALL_TO(unsigned long, lu, a, b, o),	\
 			ssize_t : _CALL_TO(ssize_t, ss, a, b, o),		\
 			void * : _CALL_TO(void *, vp, a, b, o),		\
 			char * : _CALL_TO(char *, cp, a, b, o)		\

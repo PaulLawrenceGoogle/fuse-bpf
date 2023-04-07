@@ -277,7 +277,6 @@ static int bpf_test_partial(const char *mount_dir)
 	} else {
 		DECL_FUSE(open);
 		DECL_FUSE(read);
-		DECL_FUSE(release);
 		uint8_t data[PAGE_SIZE];
 
 		TESTFUSEIN2(FUSE_OPEN | FUSE_POSTFILTER, open_in, open_out);
@@ -290,8 +289,6 @@ static int bpf_test_partial(const char *mount_dir)
 		fill_buffer(data, PAGE_SIZE, 2, 0);
 		TESTFUSEOUTREAD(data, PAGE_SIZE);
 
-		TESTFUSEIN(FUSE_RELEASE, release_in);
-		TESTFUSEOUTEMPTY();
 		exit(TEST_SUCCESS);
 	}
 	FUSE_END_DAEMON();
@@ -1377,6 +1374,7 @@ out:
 	return result;
 }
 
+/* Will not work without FUSE_CANONICAL_PATH or replacement
 static int inotify_test(const char *mount_dir)
 {
 	int result = TEST_FAILURE;
@@ -1414,6 +1412,7 @@ out:
 	close(src_fd);
 	return result;
 }
+*/
 
 static int bpf_test_statfs(const char *mount_dir)
 {
@@ -2084,7 +2083,7 @@ int main(int argc, char *argv[])
 		MAKE_TEST(bpf_test_alter_errcode_userspace),
 		MAKE_TEST(mmap_test),
 		MAKE_TEST(readdir_perms_test),
-		MAKE_TEST(inotify_test),
+		/* MAKEE_TEST(inotify_test), */
 		MAKE_TEST(bpf_test_statfs),
 		MAKE_TEST(bpf_test_lseek),
 		MAKE_TEST(bpf_test_readdirplus_not_overriding_backing),

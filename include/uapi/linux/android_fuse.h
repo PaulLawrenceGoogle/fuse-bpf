@@ -41,7 +41,8 @@ struct fuse_in_postfilter_header {
 	uint32_t	uid;
 	uint32_t	gid;
 	uint32_t	pid;
-	uint32_t	error_in;
+	uint16_t	total_extlen;
+	uint16_t	error_in;
 };
 
 /*
