@@ -1309,7 +1309,7 @@ struct dentry *fuse_lookup_finalize(struct fuse_bpf_args *fa, struct inode *dir,
 
 	ret = d_splice_alias(inode, entry);
 out:
-	if (feb->backing_file)
+	if (feb && feb->backing_file)
 		fput(feb->backing_file);
 	return ret;
 }
