@@ -2071,15 +2071,82 @@ static void fuse_fs_cleanup(void)
 
 static struct kobject *fuse_kobj;
 
+static char struct_op_name[BPF_FUSE_NAME_MAX];
+static struct fuse_ops *fop = NULL;
+
+static ssize_t struct_op_store(struct kobject *kobj,
+		  struct kobj_attribute *attr,
+		  const char *buf, size_t count)
+{
+	size_t max = count;
+
+	if (max > BPF_FUSE_NAME_MAX) max = BPF_FUSE_NAME_MAX;
+	strncpy(struct_op_name, buf, max);
+	if (struct_op_name[max-1] == '\n')
+		struct_op_name[max-1] = 0;
+	put_fuse_ops(fop);
+	fop = find_fuse_ops(struct_op_name);
+	if (!fop)
+		printk("No struct op named %s found", struct_op_name);
+
+	return count;
+}
+
+static ssize_t struct_op_show(struct kobject *kobj,
+			    struct kobj_attribute *attr, char *buf)
+{
+	struct fuse_ops *op;
+	uint32_t result = 0;
+	struct bpf_fuse_meta_info meta;
+	struct fuse_mkdir_in in;
+	struct fuse_buffer name;
+	char name_buff[10] = "test";
+
+	name.data = &name_buff[0];
+	name.flags = BPF_FUSE_VARIABLE_SIZE;
+	name.max_size = 10;
+	name.size = 5;
+
+	op = fop;
+	if (!op) {
+		printk("Could not find fuse_op for %s", struct_op_name);
+		return 0;
+	}
+
+	if (op->mkdir_prefilter)
+		result = op->mkdir_prefilter(&meta, &in, &name);
+	else
+		printk("No func!!");
+
+	printk("in->mode:%d, name:%s result:%d", in.mode, (char *)name.data, result);
+	return sprintf(buf, "%d dyn:%s\n", result, (char *)name.data);
+}
+
+static struct kobj_attribute test_attr = __ATTR_RW(struct_op);
+
+static struct attribute *test_attrs[] = {
+	&test_attr.attr,
+	NULL,
+};
+
+static const struct attribute_group test_attr_group = {
+	.attrs = test_attrs,
+};
+
 static int fuse_sysfs_init(void)
 {
 	int err;
 
+	memset(struct_op_name, 0, BPF_FUSE_NAME_MAX);
 	fuse_kobj = kobject_create_and_add("fuse", fs_kobj);
 	if (!fuse_kobj) {
 		err = -ENOMEM;
 		goto out_err;
 	}
+
+	err = sysfs_create_group(fuse_kobj, &test_attr_group);
+	if (err)
+		goto tmp;
 
 	err = sysfs_create_mount_point(fuse_kobj, "connections");
 	if (err)
@@ -2089,6 +2156,8 @@ static int fuse_sysfs_init(void)
 
  out_fuse_unregister:
 	kobject_put(fuse_kobj);
+tmp:
+	sysfs_remove_group(fuse_kobj, &test_attr_group);
  out_err:
 	return err;
 }
@@ -2096,6 +2165,7 @@ static int fuse_sysfs_init(void)
 static void fuse_sysfs_cleanup(void)
 {
 	sysfs_remove_mount_point(fuse_kobj, "connections");
+	sysfs_remove_group(fuse_kobj, &test_attr_group);
 	kobject_put(fuse_kobj);
 }
 

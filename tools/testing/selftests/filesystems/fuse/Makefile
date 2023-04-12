@@ -52,6 +52,7 @@ SELFTESTS:=$(TOOLSDIR)/testing/selftests/
 LDLIBS := -lpthread -lelf -lz
 TEST_GEN_PROGS := fuse_test fuse_daemon
 TEST_GEN_FILES := \
+  struct_op_test.bpf.o \
 	test.skel.h \
 	fd.sh \
 
