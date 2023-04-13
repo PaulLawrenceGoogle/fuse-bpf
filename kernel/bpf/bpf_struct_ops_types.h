@@ -5,6 +5,10 @@
 #ifdef CONFIG_NET
 BPF_STRUCT_OPS_TYPE(bpf_dummy_ops)
 #endif
+#ifdef CONFIG_FUSE_BPF
+#include <linux/bpf_fuse.h>
+BPF_STRUCT_OPS_TYPE(fuse_ops)
+#endif
 #ifdef CONFIG_INET
 #include <net/tcp.h>
 BPF_STRUCT_OPS_TYPE(tcp_congestion_ops)

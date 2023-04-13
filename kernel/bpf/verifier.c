@@ -9597,6 +9597,8 @@ enum special_kfunc_type {
 	KF_bpf_dynptr_from_xdp,
 	KF_bpf_dynptr_slice,
 	KF_bpf_dynptr_slice_rdwr,
+	KF_bpf_fuse_get_rw_dynptr,
+	KF_bpf_fuse_get_ro_dynptr,
 };
 
 BTF_SET_START(special_kfunc_set)
@@ -9616,6 +9618,8 @@ BTF_ID(func, bpf_dynptr_from_skb)
 BTF_ID(func, bpf_dynptr_from_xdp)
 BTF_ID(func, bpf_dynptr_slice)
 BTF_ID(func, bpf_dynptr_slice_rdwr)
+BTF_ID(func, bpf_fuse_get_rw_dynptr)
+BTF_ID(func, bpf_fuse_get_ro_dynptr)
 BTF_SET_END(special_kfunc_set)
 
 BTF_ID_LIST(special_kfunc_list)
@@ -9637,6 +9641,8 @@ BTF_ID(func, bpf_dynptr_from_skb)
 BTF_ID(func, bpf_dynptr_from_xdp)
 BTF_ID(func, bpf_dynptr_slice)
 BTF_ID(func, bpf_dynptr_slice_rdwr)
+BTF_ID(func, bpf_fuse_get_rw_dynptr)
+BTF_ID(func, bpf_fuse_get_ro_dynptr)
 
 static bool is_kfunc_bpf_rcu_read_lock(struct bpf_kfunc_call_arg_meta *meta)
 {
@@ -10349,6 +10355,9 @@ static int check_kfunc_args(struct bpf_verifier_env *env, struct bpf_kfunc_call_
 				dynptr_arg_type |= DYNPTR_TYPE_SKB;
 			else if (meta->func_id == special_kfunc_list[KF_bpf_dynptr_from_xdp])
 				dynptr_arg_type |= DYNPTR_TYPE_XDP;
+			else if (meta->func_id == special_kfunc_list[KF_bpf_fuse_get_rw_dynptr] ||
+					meta->func_id == special_kfunc_list[KF_bpf_fuse_get_ro_dynptr])
+				dynptr_arg_type |= DYNPTR_TYPE_LOCAL;
 
 			ret = process_dynptr_func(env, regno, insn_idx, dynptr_arg_type);
 			if (ret < 0)
