@@ -270,4 +270,12 @@ struct fuse_ops {
 	char name[BPF_FUSE_NAME_MAX];
 };
 
+struct bpf_fuse_ops_attach {
+	int (*fuse_register_bpf)(struct fuse_ops *f_ops);
+	void (*fuse_unregister_bpf)(struct fuse_ops *f_ops);
+};
+
+int register_fuse_bpf(struct bpf_fuse_ops_attach *reg_ops);
+void unregister_fuse_bpf(struct bpf_fuse_ops_attach *reg_ops);
+
 #endif /* _BPF_FUSE_H */

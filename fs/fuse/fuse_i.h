@@ -1390,6 +1390,32 @@ void fuse_file_release(struct inode *inode, struct fuse_file *ff,
 		       unsigned int open_flags, fl_owner_t id, bool isdir);
 
 /* backing.c */
+#ifdef CONFIG_FUSE_BPF
+struct fuse_ops *find_fuse_ops(const char *key);
+struct fuse_ops *get_fuse_ops(struct fuse_ops *ops);
+void put_fuse_ops(struct fuse_ops *ops);
+int init_fuse_bpf(void);
+void uninit_fuse_bpf(void);
+#else
+int init_fuse_bpf(void)
+{
+	return -EOPNOTSUPP;
+}
+void uninit_fuse_bpf(void)
+{
+}
+struct fuse_ops *find_fuse_ops(const char *key)
+{
+	return NULL;
+}
+struct fuse_ops *get_fuse_ops(struct fuse_ops *ops)
+{
+	return NULL;
+}
+void put_fuse_ops(struct fuse_ops *ops)
+{
+}
+#endif
 
 enum fuse_bpf_set {
 	FUSE_BPF_UNCHANGED = 0,
