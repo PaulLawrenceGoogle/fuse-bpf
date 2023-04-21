@@ -242,6 +242,12 @@ static inline void bpf_fuse_free_alloced(struct bpf_fuse_args *fa)
 						&fa.info, &feo);	\
 		else							\
 			bpf_next = BPF_FUSE_CONTINUE;			\
+		if (bpf_next == BPF_FUSE_CALL_DEFAULT) {		\
+			if (fuse_ops->default_filter)			\
+				bpf_next = fuse_ops->default_filter(&fa.info); \
+			else						\
+				bpf_next = BPF_FUSE_CONTINUE;		\
+		}							\
 		if (bpf_next < 0) {					\
 			error = bpf_next;				\
 			break;						\
@@ -281,6 +287,12 @@ static inline void bpf_fuse_free_alloced(struct bpf_fuse_args *fa)
 		fa.info.opcode |= FUSE_POSTFILTER;			\
 		if (bpf_next == BPF_FUSE_POSTFILTER)			\
 			bpf_next = call_postfilter(fuse_ops, &fa.info, &feo);\
+		if (bpf_next == BPF_FUSE_CALL_DEFAULT) {		\
+			if (fuse_ops->default_filter)			\
+				bpf_next = fuse_ops->default_filter(&fa.info); \
+			else						\
+				bpf_next = BPF_FUSE_CONTINUE;		\
+		}							\
 		if (bpf_next < 0) {					\
 			error = bpf_next;				\
 			break;						\
@@ -600,7 +612,7 @@ static int fuse_open_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *
 		if (ops->opendir_prefilter)
 			return ops->opendir_prefilter(meta, &open->in);
 	}
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_open_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -614,7 +626,7 @@ static int fuse_open_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info 
 		if (ops->opendir_postfilter)
 			return ops->opendir_postfilter(meta, &open->in, &open->out);
 	}
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_open_backing(struct bpf_fuse_args *fa, int *out,
@@ -756,7 +768,7 @@ static int fuse_create_open_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta
 {
 	if (ops->create_open_prefilter)
 		return ops->create_open_prefilter(meta, &args->in, &args->name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_create_open_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -764,7 +776,7 @@ static int fuse_create_open_postfilter(struct fuse_ops *ops, struct bpf_fuse_met
 {
 	if (ops->create_open_postfilter)
 		return ops->create_open_postfilter(meta, &args->in, &args->name, &args->entry_out, &args->open_out);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_open_file_backing(struct inode *inode, struct file *file)
@@ -944,7 +956,7 @@ static int fuse_release_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_inf
 {
 	if (ops->release_prefilter)
 		return ops->release_prefilter(meta, args);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_release_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -952,7 +964,7 @@ static int fuse_release_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_in
 {
 	if (ops->release_postfilter)
 		return ops->release_postfilter(meta, args);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_releasedir_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -960,7 +972,7 @@ static int fuse_releasedir_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_
 {
 	if (ops->releasedir_prefilter)
 		return ops->releasedir_prefilter(meta, args);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_releasedir_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -968,7 +980,7 @@ static int fuse_releasedir_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta
 {
 	if (ops->releasedir_postfilter)
 		return ops->releasedir_postfilter(meta, args);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_releasedir_initialize_out(struct bpf_fuse_args *fa,
@@ -1043,7 +1055,7 @@ static int fuse_flush_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info 
 {
 	if (ops->flush_prefilter)
 		return ops->flush_prefilter(meta, args);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_flush_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -1051,7 +1063,7 @@ static int fuse_flush_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info
 {
 	if (ops->flush_postfilter)
 		return ops->flush_postfilter(meta, args);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_flush_backing(struct bpf_fuse_args *fa, int *out, struct file *file, fl_owner_t id)
@@ -1123,7 +1135,7 @@ static int fuse_lseek_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info 
 {
 	if (ops->lseek_prefilter)
 		return ops->lseek_prefilter(meta, &args->in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_lseek_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -1131,7 +1143,7 @@ static int fuse_lseek_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info
 {
 	if (ops->lseek_postfilter)
 		return ops->lseek_postfilter(meta, &args->in, &args->out);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_lseek_backing(struct bpf_fuse_args *fa, loff_t *out,
@@ -1238,7 +1250,7 @@ static int fuse_copy_file_range_prefilter(struct fuse_ops *ops, struct bpf_fuse_
 {
 	if (ops->copy_file_range_prefilter)
 		return ops->copy_file_range_prefilter(meta, &args->in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_copy_file_range_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -1246,7 +1258,7 @@ static int fuse_copy_file_range_postfilter(struct fuse_ops *ops, struct bpf_fuse
 {
 	if (ops->copy_file_range_postfilter)
 		return ops->copy_file_range_postfilter(meta, &args->in, &args->out);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_copy_file_range_backing(struct bpf_fuse_args *fa, ssize_t *out, struct file *file_in,
@@ -1325,7 +1337,7 @@ static int fuse_fsync_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info 
 {
 	if (ops->fsync_prefilter)
 		return ops->fsync_prefilter(meta, in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_fsync_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -1333,7 +1345,7 @@ static int fuse_fsync_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info
 {
 	if (ops->fsync_postfilter)
 		return ops->fsync_postfilter(meta, in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_fsync_backing(struct bpf_fuse_args *fa, int *out,
@@ -1398,7 +1410,7 @@ static int fuse_dir_fsync_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_i
 {
 	if (ops->dir_fsync_prefilter)
 		return ops->fsync_prefilter(meta, in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_dir_fsync_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -1406,7 +1418,7 @@ static int fuse_dir_fsync_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_
 {
 	if (ops->dir_fsync_postfilter)
 		return ops->dir_fsync_postfilter(meta, in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 int fuse_bpf_dir_fsync(int *out, struct inode *inode, struct file *file, loff_t start, loff_t end, int datasync)
@@ -1488,7 +1500,7 @@ static int fuse_getxattr_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_in
 {
 	if (ops->getxattr_prefilter)
 		return ops->getxattr_prefilter(meta, &args->in, &args->name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_getxattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -1496,7 +1508,7 @@ static int fuse_getxattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_i
 {
 	if (ops->getxattr_postfilter)
 		return ops->getxattr_postfilter(meta, &args->in, &args->name, &args->value, &args->out);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_getxattr_backing(struct bpf_fuse_args *fa, int *out,
@@ -1602,7 +1614,7 @@ static int fuse_listxattr_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_i
 {
 	if (ops->listxattr_prefilter)
 		return ops->listxattr_prefilter(meta, &args->in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_listxattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -1610,7 +1622,7 @@ static int fuse_listxattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_
 {
 	if (ops->listxattr_postfilter)
 		return ops->listxattr_postfilter(meta, &args->in, &args->value, &args->out);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_listxattr_backing(struct bpf_fuse_args *fa, ssize_t *out, struct dentry *dentry,
@@ -1723,7 +1735,7 @@ static int fuse_setxattr_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_in
 {
 	if (ops->setxattr_prefilter)
 		return ops->setxattr_prefilter(meta, &args->in, &args->name, &args->value);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_setxattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -1731,7 +1743,7 @@ static int fuse_setxattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_i
 {
 	if (ops->setxattr_postfilter)
 		return ops->setxattr_postfilter(meta, &args->in, &args->name, &args->value);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_setxattr_backing(struct bpf_fuse_args *fa, int *out, struct dentry *dentry,
@@ -1799,7 +1811,7 @@ static int fuse_removexattr_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta
 {
 	if (ops->removexattr_prefilter)
 		return ops->removexattr_prefilter(meta, in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_removexattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -1807,7 +1819,7 @@ static int fuse_removexattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_met
 {
 	if (ops->removexattr_postfilter)
 		return ops->removexattr_postfilter(meta, in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_removexattr_backing(struct bpf_fuse_args *fa, int *out,
@@ -1926,7 +1938,7 @@ static int fuse_file_read_iter_prefilter(struct fuse_ops *ops, struct bpf_fuse_m
 {
 	if (ops->read_iter_prefilter)
 		return ops->read_iter_prefilter(meta, &args->in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_file_read_iter_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -1934,7 +1946,7 @@ static int fuse_file_read_iter_postfilter(struct fuse_ops *ops, struct bpf_fuse_
 {
 	if (ops->read_iter_postfilter)
 		return ops->read_iter_postfilter(meta, &args->in, &args->out);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_file_read_iter_backing(struct bpf_fuse_args *fa, ssize_t *out,
@@ -2060,7 +2072,7 @@ static int fuse_write_iter_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_
 {
 	if (ops->write_iter_prefilter)
 		return ops->write_iter_prefilter(meta, &args->in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_write_iter_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -2068,7 +2080,7 @@ static int fuse_write_iter_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta
 {
 	if (ops->write_iter_postfilter)
 		return ops->write_iter_postfilter(meta, &args->in, &args->out);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_file_write_iter_backing(struct bpf_fuse_args *fa, ssize_t *out,
@@ -2217,7 +2229,7 @@ static int fuse_file_fallocate_prefilter(struct fuse_ops *ops, struct bpf_fuse_m
 {
 	if (ops->file_fallocate_prefilter)
 		return ops->file_fallocate_prefilter(meta, in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_file_fallocate_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -2225,7 +2237,7 @@ static int fuse_file_fallocate_postfilter(struct fuse_ops *ops, struct bpf_fuse_
 {
 	if (ops->file_fallocate_postfilter)
 		return ops->file_fallocate_postfilter(meta, in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_file_fallocate_backing(struct bpf_fuse_args *fa, int *out,
@@ -2324,7 +2336,7 @@ static int fuse_lookup_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info
 {
 	if (ops->lookup_prefilter)
 		return ops->lookup_prefilter(meta, &args->name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_lookup_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -2332,7 +2344,7 @@ static int fuse_lookup_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_inf
 {
 	if (ops->lookup_postfilter)
 		return ops->lookup_postfilter(meta, &args->name, &args->out, &args->bpf_entries);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_lookup_backing(struct bpf_fuse_args *fa, struct dentry **out, struct inode *dir,
@@ -2585,7 +2597,7 @@ static int fuse_mknod_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info 
 {
 	if (ops->mknod_prefilter)
 		return ops->mknod_prefilter(meta, &args->in, &args->name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_mknod_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -2593,7 +2605,7 @@ static int fuse_mknod_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info
 {
 	if (ops->mknod_postfilter)
 		return ops->mknod_postfilter(meta, &args->in, &args->name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_mknod_backing(struct bpf_fuse_args *fa, int *out,
@@ -2755,7 +2767,7 @@ static int fuse_mkdir_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info 
 {
 	if (ops->mkdir_prefilter)
 		return ops->mkdir_prefilter(meta, &args->in, &args->name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_mkdir_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -2763,7 +2775,7 @@ static int fuse_mkdir_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info
 {
 	if (ops->mkdir_prefilter)
 		return ops->mkdir_postfilter(meta, &args->in, &args->name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 int fuse_bpf_mkdir(int *out, struct inode *dir, struct dentry *entry, umode_t mode)
@@ -2809,7 +2821,7 @@ static int fuse_rmdir_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info 
 {
 	if (ops->rmdir_prefilter)
 		return ops->rmdir_prefilter(meta, name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_rmdir_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -2817,7 +2829,7 @@ static int fuse_rmdir_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info
 {
 	if (ops->rmdir_postfilter)
 		return ops->rmdir_postfilter(meta, name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_rmdir_backing(struct bpf_fuse_args *fa, int *out,
@@ -3002,7 +3014,7 @@ static int fuse_rename2_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_inf
 {
 	if (ops->rename2_prefilter)
 		return ops->rename2_prefilter(meta, &args->in, &args->old_name, &args->new_name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_rename2_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -3010,7 +3022,7 @@ static int fuse_rename2_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_in
 {
 	if (ops->rename2_postfilter)
 		return ops->rename2_postfilter(meta, &args->in, &args->old_name, &args->new_name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_rename2_backing(struct bpf_fuse_args *fa, int *out,
@@ -3106,7 +3118,7 @@ static int fuse_rename_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info
 {
 	if (ops->rename_prefilter)
 		return ops->rename_prefilter(meta, &args->in, &args->old_name, &args->new_name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_rename_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -3114,7 +3126,7 @@ static int fuse_rename_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_inf
 {
 	if (ops->rename_postfilter)
 		return ops->rename_postfilter(meta, &args->in, &args->old_name, &args->new_name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_rename_backing(struct bpf_fuse_args *fa, int *out,
@@ -3177,7 +3189,7 @@ static int fuse_unlink_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info
 {
 	if (ops->unlink_prefilter)
 		return ops->unlink_prefilter(meta, name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_unlink_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -3185,7 +3197,7 @@ static int fuse_unlink_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_inf
 {
 	if (ops->unlink_postfilter)
 		return ops->unlink_postfilter(meta, name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_unlink_backing(struct bpf_fuse_args *fa, int *out, struct inode *dir, struct dentry *entry)
@@ -3282,7 +3294,7 @@ static int fuse_link_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *
 {
 	if (ops->link_prefilter)
 		return ops->link_prefilter(meta, &args->in, &args->name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_link_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -3290,7 +3302,7 @@ static int fuse_link_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info 
 {
 	if (ops->link_postfilter)
 		return ops->link_postfilter(meta, &args->in, &args->name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 
@@ -3415,7 +3427,7 @@ static int fuse_getattr_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_inf
 {
 	if (ops->getattr_prefilter)
 		return ops->getattr_prefilter(meta, &args->in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_getattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -3423,7 +3435,7 @@ static int fuse_getattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_in
 {
 	if (ops->getattr_postfilter)
 		return ops->getattr_postfilter(meta, &args->in, &args->out);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_getattr_backing(struct bpf_fuse_args *fa, int *out,
@@ -3571,7 +3583,7 @@ static int fuse_setattr_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_inf
 {
 	if (ops->setattr_prefilter)
 		return ops->setattr_prefilter(meta, &args->in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_setattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -3579,7 +3591,7 @@ static int fuse_setattr_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_in
 {
 	if (ops->setattr_postfilter)
 		return ops->setattr_postfilter(meta, &args->in, &args->out);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_setattr_backing(struct bpf_fuse_args *fa, int *out,
@@ -3654,7 +3666,7 @@ static int fuse_statfs_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info
 {
 	if (ops->statfs_prefilter)
 		return ops->statfs_prefilter(meta);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_statfs_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -3662,7 +3674,7 @@ static int fuse_statfs_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_inf
 {
 	if (ops->statfs_postfilter)
 		return ops->statfs_postfilter(meta, out);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_statfs_backing(struct bpf_fuse_args *fa, int *out,
@@ -3775,7 +3787,7 @@ static int fuse_get_link_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_in
 {
 	if (ops->get_link_prefilter)
 		return ops->get_link_prefilter(meta, &args->name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_get_link_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -3783,7 +3795,7 @@ static int fuse_get_link_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_i
 {
 	if (ops->get_link_postfilter)
 		return ops->get_link_postfilter(meta, &args->name);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_get_link_backing(struct bpf_fuse_args *fa, const char **out,
@@ -3881,7 +3893,7 @@ static int fuse_symlink_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_inf
 {
 	if (ops->symlink_prefilter)
 		return ops->symlink_prefilter(meta, &args->name, &args->path);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_symlink_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -3889,7 +3901,7 @@ static int fuse_symlink_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_in
 {
 	if (ops->symlink_postfilter)
 		return ops->symlink_postfilter(meta, &args->name, &args->path);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_symlink_backing(struct bpf_fuse_args *fa, int *out,
@@ -4021,7 +4033,7 @@ static int fuse_readdir_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_inf
 {
 	if (ops->readdir_prefilter)
 		return ops->readdir_prefilter(meta, &args->in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_readdir_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -4029,7 +4041,7 @@ static int fuse_readdir_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_in
 {
 	if (ops->readdir_postfilter)
 		return ops->readdir_postfilter(meta, &args->in, &args->out, &args->buffer);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 struct fusebpf_ctx {
@@ -4189,7 +4201,7 @@ static int fuse_access_prefilter(struct fuse_ops *ops, struct bpf_fuse_meta_info
 {
 	if (ops->access_prefilter)
 		return ops->access_prefilter(meta, in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_access_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_info *meta,
@@ -4197,7 +4209,7 @@ static int fuse_access_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta_inf
 {
 	if (ops->access_postfilter)
 		return ops->access_postfilter(meta, in);
-	return BPF_FUSE_CONTINUE;
+	return BPF_FUSE_CALL_DEFAULT;
 }
 
 static int fuse_access_backing(struct bpf_fuse_args *fa, int *out, struct inode *inode, int mask)

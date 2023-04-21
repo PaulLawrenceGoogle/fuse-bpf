@@ -7161,6 +7161,7 @@ struct bpf_iter_num {
 #define BPF_FUSE_USER_PREFILTER		2
 #define BPF_FUSE_POSTFILTER		3
 #define BPF_FUSE_USER_POSTFILTER	4
+#define BPF_FUSE_CALL_DEFAULT		5
 
 /* Op Code Filter values for BPF Programs */
 #define FUSE_OPCODE_FILTER	0x0ffff

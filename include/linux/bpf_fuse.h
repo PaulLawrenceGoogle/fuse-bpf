@@ -86,6 +86,8 @@ static inline unsigned bpf_fuse_arg_size(const struct bpf_fuse_arg *arg)
 }
 
 struct fuse_ops {
+	uint32_t (*default_filter)(const struct bpf_fuse_meta_info *meta);
+
 	uint32_t (*open_prefilter)(const struct bpf_fuse_meta_info *meta,
 				struct fuse_open_in *in);
 	uint32_t (*open_postfilter)(const struct bpf_fuse_meta_info *meta,
