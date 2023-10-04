@@ -2462,13 +2462,11 @@ int fuse_handle_bpf_ops(struct fuse_bpf_entry *fbe, struct inode *parent,
 	}
 
 	/* Cannot change existing program */
-	if (*ops && new_ops) {
-		put_fuse_ops(new_ops);
+	if (*ops) {
+		if (new_ops)
+			put_fuse_ops(new_ops);
 		return new_ops == *ops ? 0 : -EINVAL;
 	}
-
-	if (*ops)
-		put_fuse_ops(*ops);
 
 	*ops = new_ops;
 	return 0;
