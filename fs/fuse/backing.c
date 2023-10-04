@@ -2431,26 +2431,23 @@ int fuse_handle_backing(struct fuse_bpf_entry *fbe, struct path *backing_path)
 int fuse_handle_bpf_ops(struct fuse_bpf_entry *fbe, struct inode *parent,
 			 struct fuse_ops **ops)
 {
-	struct fuse_ops *new_ops;
-
-	/* Parent isn't presented, but we want to keep
-	 * Don't touch bpf program at all in this case
-	 */
-	if (fbe->bpf_action == FUSE_BPF_UNCHANGED && !parent)
-		return 0;
+	struct fuse_ops *new_ops = NULL;
 
 	switch (fbe->bpf_action) {
 	case FUSE_BPF_UNCHANGED: {
-		struct fuse_inode *pi = get_fuse_inode(parent);
+		/* Parent isn't presented, but we want to keep
+		 * Don't touch bpf program at all in this case
+		 */
+		if (!parent)
+			return 0;
 
-		new_ops = pi->bpf_ops;
+		new_ops = get_fuse_inode(parent)->bpf_ops;
 		if (new_ops && !get_fuse_ops(new_ops))
 			return -EINVAL;
 		break;
 	}
 
 	case FUSE_BPF_REMOVE:
-		new_ops = NULL;
 		break;
 
 	case FUSE_BPF_SET:
@@ -2465,10 +2462,13 @@ int fuse_handle_bpf_ops(struct fuse_bpf_entry *fbe, struct inode *parent,
 	}
 
 	/* Cannot change existing program */
-	if (*ops) {
+	if (*ops && new_ops) {
 		put_fuse_ops(new_ops);
 		return new_ops == *ops ? 0 : -EINVAL;
 	}
+
+	if (*ops)
+		put_fuse_ops(*ops);
 
 	*ops = new_ops;
 	return 0;
