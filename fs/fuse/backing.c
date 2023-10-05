@@ -897,21 +897,20 @@ int fuse_bpf_create_open(int *out, struct inode *dir, struct dentry *entry,
 }
 
 static int fuse_release_initialize_in(struct bpf_fuse_args *fa, struct fuse_release_in *fri,
-				      struct inode *inode, struct file *file)
+				      struct inode *inode, struct fuse_file *ff)
 {
-	struct fuse_file *fuse_file = file->private_data;
-
 	/* Always put backing file whatever bpf/userspace says */
-	fput(fuse_file->backing_file);
+	fput(ff->backing_file);
 
 	*fri = (struct fuse_release_in) {
-		.fh = ((struct fuse_file *)(file->private_data))->fh,
+		.fh = ff->fh,
 	};
 
 	*fa = (struct bpf_fuse_args) {
 		.info = (struct bpf_fuse_meta_info) {
 			.nodeid = get_fuse_inode(inode)->nodeid,
-			.opcode = FUSE_RELEASE,
+			.opcode = S_ISDIR(inode->i_mode) ? FUSE_RELEASEDIR
+							 : FUSE_RELEASE,
 		},		.in_numargs = 1,
 		.in_args[0].size = sizeof(*fri),
 		.in_args[0].value = fri,
@@ -921,33 +920,8 @@ static int fuse_release_initialize_in(struct bpf_fuse_args *fa, struct fuse_rele
 }
 
 static int fuse_release_initialize_out(struct bpf_fuse_args *fa, struct fuse_release_in *fri,
-				       struct inode *inode, struct file *file)
+				       struct inode *inode, struct fuse_file *ff)
 {
-	return 0;
-}
-
-static int fuse_releasedir_initialize_in(struct bpf_fuse_args *fa,
-					 struct fuse_release_in *fri,
-					 struct inode *inode, struct file *file)
-{
-	struct fuse_file *fuse_file = file->private_data;
-
-	/* Always put backing file whatever bpf/userspace says */
-	fput(fuse_file->backing_file);
-
-	*fri = (struct fuse_release_in) {
-		.fh = ((struct fuse_file *)(file->private_data))->fh,
-	};
-
-	*fa = (struct bpf_fuse_args) {
-		.info = (struct bpf_fuse_meta_info) {
-			.nodeid = get_fuse_inode(inode)->nodeid,
-			.opcode = FUSE_RELEASEDIR,
-		},		.in_numargs = 1,
-		.in_args[0].size = sizeof(*fri),
-		.in_args[0].value = fri,
-	};
-
 	return 0;
 }
 
@@ -983,42 +957,34 @@ static int fuse_releasedir_postfilter(struct fuse_ops *ops, struct bpf_fuse_meta
 	return BPF_FUSE_CALL_DEFAULT;
 }
 
-static int fuse_releasedir_initialize_out(struct bpf_fuse_args *fa,
-					  struct fuse_release_in *fri,
-					  struct inode *inode, struct file *file)
-{
-	return 0;
-}
-
 static int fuse_release_backing(struct bpf_fuse_args *fa, int *out,
-				struct inode *inode, struct file *file)
+				struct inode *inode, struct fuse_file *ff)
 {
 	return 0;
 }
 
 static int fuse_release_finalize(struct bpf_fuse_args *fa, int *out,
-				 struct inode *inode, struct file *file)
+				 struct inode *inode, struct fuse_file *ff)
 {
-	fuse_file_free(file->private_data);
 	*out = 0;
 	return 0;
 }
 
-int fuse_bpf_release(int *out, struct inode *inode, struct file *file)
+int fuse_bpf_release(int *out, struct inode *inode, struct fuse_file *ff)
 {
 	return bpf_fuse_backing(inode, struct fuse_release_in, out,
 				fuse_release_initialize_in, fuse_release_initialize_out,
 				fuse_release_prefilter, fuse_release_postfilter,
 				fuse_release_backing, fuse_release_finalize,
-				inode, file);
+				inode, ff);
 }
 
-int fuse_bpf_releasedir(int *out, struct inode *inode, struct file *file)
+int fuse_bpf_releasedir(int *out, struct inode *inode, struct fuse_file *ff)
 {
 	return bpf_fuse_backing(inode, struct fuse_release_in, out,
-				fuse_releasedir_initialize_in, fuse_releasedir_initialize_out,
+				fuse_release_initialize_in, fuse_release_initialize_out,
 				fuse_releasedir_prefilter, fuse_releasedir_postfilter,
-				fuse_release_backing, fuse_release_finalize, inode, file);
+				fuse_release_backing, fuse_release_finalize, inode, ff);
 }
 
 static int fuse_flush_initialize_in(struct bpf_fuse_args *fa, struct fuse_flush_in *ffi,

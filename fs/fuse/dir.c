@@ -1680,11 +1680,6 @@ static int fuse_dir_open(struct inode *inode, struct file *file)
 
 static int fuse_dir_release(struct inode *inode, struct file *file)
 {
-	int err = 0;
-
-	if (fuse_bpf_releasedir(&err, inode, file))
-		return err;
-
 	fuse_release_common(file, true);
 
 	return 0;

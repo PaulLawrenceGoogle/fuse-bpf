@@ -1487,8 +1487,8 @@ int fuse_bpf_rename(int *out, struct inode *olddir, struct dentry *oldent,
 		    struct inode *newdir, struct dentry *newent);
 int fuse_bpf_unlink(int *out, struct inode *dir, struct dentry *entry);
 int fuse_bpf_link(int *out, struct inode *inode, struct dentry *entry, struct inode *dir, struct dentry *newent);
-int fuse_bpf_release(int *out, struct inode *inode, struct file *file);
-int fuse_bpf_releasedir(int *out, struct inode *inode, struct file *file);
+int fuse_bpf_release(int *out, struct inode *inode, struct fuse_file *ff);
+int fuse_bpf_releasedir(int *out, struct inode *inode, struct fuse_file *ff);
 int fuse_bpf_flush(int *out, struct inode *inode, struct file *file, fl_owner_t id);
 int fuse_bpf_lseek(loff_t *out, struct inode *inode, struct file *file, loff_t offset, int whence);
 int fuse_bpf_copy_file_range(ssize_t *out, struct inode *inode, struct file *file_in, loff_t pos_in,
